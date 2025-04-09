@@ -250,13 +250,18 @@ async def handle_pdf(message: types.Message):
     temp_pdf_path = f"temp_{user_id}.pdf"
     with open(temp_pdf_path, "wb") as f:
         f.write(downloaded_file.read())
+    try:
+        await message.answer("📄 Документ загружен. Обрабатываю данные...")
 
-    await message.answer("📄 Документ загружен. Обрабатываю данные...")
-
-    extracted_text = extract_text_from_pdf(temp_pdf_path)
-    os.remove(temp_pdf_path)  # Удаляем файл после обработки
-
-    await message.answer(extracted_text)
+        extracted_text = extract_text_from_pdf(temp_pdf_path)
+        result_text = f"{gigachat(extracted_text, load_prompt())}"
+        await message.answer(refact_res_mes(result_text))
+        os.remove(temp_pdf_path)  # Удаляем файл после обработки
+    except Exception as e:
+        await message.answer("❌ Ошибка обработки PDF. Попробуйте другой файл.")
+        logging.error(f"Ошибка чтения PDF: {e}")
+    finally:
+        os.remove(temp_pdf_path)
 
 @dp.message(F.text)
 async def handle_text(message: types.Message):
