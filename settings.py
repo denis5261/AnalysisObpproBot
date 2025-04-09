@@ -3,7 +3,7 @@ import os
 import logging
 
 load_dotenv()
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN_TEST")
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 logging.basicConfig(level=logging.INFO)
 LOG_FILE = "requests_log.json"
 REQUEST_LIMIT_mes = 25
