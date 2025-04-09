@@ -13,15 +13,17 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
 from settings import TOKEN, ADMIN_IDS, LOG_FILE, REQUEST_LIMIT_pdf, REQUEST_LIMIT_mes
-from utils import load_logs, save_logs, load_prompt, save_prompt, refact_res_mes, gigachat
+from utils import load_logs, save_logs, load_prompt, save_prompt, refact_res_mes, gigachat, extract_text_from_pdf
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 logging.basicConfig(level=logging.INFO)
 
+
 class Form(StatesGroup):
     waiting_for_prompt = State()
     waiting_for_send_message = State()
+
 
 def admin_keyboard():
     # Создаем клавиатуру с явным указанием поля `keyboard`
@@ -50,6 +52,9 @@ async def send_welcome(message: types.Message):
 
     if user_id not in logs:
         logs[user_id] = {"Username": message.from_user.username, "requests_today_mes": 0, "requests_today_pdf": 0, "last_request_date": ""}
+
+    if 'Username' not in logs[user_id]:
+        logs[user_id]['Username'] = message.from_user.username
     save_logs(logs)
 
     text = ("✨ Доброго времени суток, друзья! ✨\n\n"
@@ -60,7 +65,7 @@ async def send_welcome(message: types.Message):
             "Напоминаю, что я не заменяю врача, а предоставляю только информационную услугу.\n"
             "🔐 Пользуясь ботом, вы полностью принимаете политику обработки персональных данных:\n"
             "[Политика обработки](https://docs.google.com/document/d/1hOsAz2g--YBnQvQohbxa0Ybzb6oWH3aIAp796w7rgK4)\n"
-            "❌ Действует лимит: по 5 PDF исследований в день."
+            "❌ Действует лимит: по 3 PDF исследований в день."
             )
     await message.answer(text)
 
@@ -153,6 +158,7 @@ async def cancel_prompt(callback_query: types.CallbackQuery):
     # Убираем кнопки после ответа
     await callback_query.message.edit_reply_markup(reply_markup=None)
 
+
 async def send_broadcast(message: types.Message, state: FSMContext):
     data = await state.get_data()
     message_text = data.get("message_text")
@@ -170,14 +176,61 @@ async def send_broadcast(message: types.Message, state: FSMContext):
     await state.clear()
 
 
+# @dp.message(F.document)
+# async def handle_pdf(message: types.Message):
+#     user_id = str(message.from_user.id)
+#     logs = load_logs()
+#     today = datetime.datetime.now().strftime("%Y-%m-%d")
+#
+#     if user_id not in logs:
+#         logs[user_id] = {"Username": message.from_user.username, "requests_today_mes": 0, "requests_today_pdf": 0, "last_request_date": ""}
+#
+#     if logs[user_id]["last_request_date"] != today:
+#         logs[user_id]["requests_today_pdf"] = 0
+#         logs[user_id]["last_request_date"] = today
+#
+#     if logs[user_id]["requests_today_pdf"] >= REQUEST_LIMIT_pdf:
+#         await message.answer("❌ Ваш сегодняшний лимит исчерпан.")
+#         return
+#
+#     if 'Username' not in logs[user_id]:
+#         logs[user_id]['Username'] = message.from_user.username
+#
+#     if user_id not in ADMIN_IDS:
+#         logs[user_id]["requests_today_pdf"] += 1
+#     save_logs(logs)
+#
+#     file_id = message.document.file_id
+#     file = await bot.get_file(file_id)
+#     file_path = file.file_path
+#     downloaded_file = await bot.download_file(file_path)
+#     temp_pdf_path = f"temp_{user_id}.pdf"
+#
+#     with open(temp_pdf_path, "wb") as f:
+#         f.write(downloaded_file.read())
+#
+#     try:
+#         with open(temp_pdf_path, "rb") as f:
+#             reader = PyPDF2.PdfReader(f)
+#             text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+#
+#         await message.answer("📄 Документ загружен. Обрабатываю данные...")
+#         result_text = f"{gigachat(text, load_prompt())}"
+#         await message.answer(refact_res_mes(result_text))
+#     except Exception as e:
+#         await message.answer("❌ Ошибка обработки PDF. Попробуйте другой файл.")
+#         logging.error(f"Ошибка чтения PDF: {e}")
+#     finally:
+#         os.remove(temp_pdf_path)
 @dp.message(F.document)
 async def handle_pdf(message: types.Message):
     user_id = str(message.from_user.id)
-    logs = load_logs()
     today = datetime.datetime.now().strftime("%Y-%m-%d")
 
+    # Загружаем логи (реализуй `load_logs()`)
+    logs = load_logs()
     if user_id not in logs:
-        logs[user_id] = {"Username": message.from_user.username, "requests_today_mes": 0, "requests_today_pdf": 0, "last_request_date": ""}
+        logs[user_id] = {"Username": message.from_user.username, "requests_today_pdf": 0, "last_request_date": ""}
 
     if logs[user_id]["last_request_date"] != today:
         logs[user_id]["requests_today_pdf"] = 0
@@ -187,36 +240,23 @@ async def handle_pdf(message: types.Message):
         await message.answer("❌ Ваш сегодняшний лимит исчерпан.")
         return
 
-    if not logs[user_id]['Username']:
-        logs[user_id]['Username'] = message.from_user.username
-
-    if user_id not in ADMIN_IDS:
-        logs[user_id]["requests_today_pdf"] += 1
-    save_logs(logs)
+    logs[user_id]["requests_today_pdf"] += 1
+    save_logs(logs)  # Реализуй `save_logs()`
 
     file_id = message.document.file_id
     file = await bot.get_file(file_id)
-    file_path = file.file_path
-    downloaded_file = await bot.download_file(file_path)
-    temp_pdf_path = f"temp_{user_id}.pdf"
+    downloaded_file = await bot.download_file(file.file_path)
 
+    temp_pdf_path = f"temp_{user_id}.pdf"
     with open(temp_pdf_path, "wb") as f:
         f.write(downloaded_file.read())
 
-    try:
-        with open(temp_pdf_path, "rb") as f:
-            reader = PyPDF2.PdfReader(f)
-            text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+    await message.answer("📄 Документ загружен. Обрабатываю данные...")
 
-        await message.answer("📄 Документ загружен. Обрабатываю данные...")
-        result_text = f"{gigachat(text, load_prompt())}"
-        await message.answer(refact_res_mes(result_text))
-    except Exception as e:
-        await message.answer("❌ Ошибка обработки PDF. Попробуйте другой файл.")
-        logging.error(f"Ошибка чтения PDF: {e}")
-    finally:
-        os.remove(temp_pdf_path)
+    extracted_text = extract_text_from_pdf(temp_pdf_path)
+    os.remove(temp_pdf_path)  # Удаляем файл после обработки
 
+    await message.answer(extracted_text)
 
 @dp.message(F.text)
 async def handle_text(message: types.Message):
@@ -235,7 +275,7 @@ async def handle_text(message: types.Message):
         await message.answer("❌ Ваш сегодняшний лимит исчерпан.")
         return
 
-    if not logs[user_id]['Username']:
+    if 'Username' not in logs[user_id]:
         logs[user_id]['Username'] = message.from_user.username
 
     if user_id not in ADMIN_IDS:

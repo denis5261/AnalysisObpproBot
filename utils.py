@@ -1,10 +1,14 @@
+import logging
 import os
 import json
-from gigachat import GigaChat
 
+import PyPDF2
+import pytesseract
+from gigachat import GigaChat
+from pdf2image import convert_from_path
 from settings import LOG_FILE
 
-
+pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
 def load_logs():
     if os.path.exists(LOG_FILE):
         with open(LOG_FILE, "r", encoding="utf-8") as f:
@@ -74,3 +78,24 @@ def refact_res_mes(result_text):
     for key, value in replasing_dict.items():
         result_text = result_text.replace(key, value)
     return result_text
+
+
+def extract_text_from_pdf(pdf_path):
+    text = ""
+    try:
+        with open(pdf_path, "rb") as f:
+            reader = PyPDF2.PdfReader(f)
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+
+        if not text.strip():  # Если текст не был найден, применяем OCR
+            images = convert_from_path(pdf_path)
+            for image in images:
+                text += pytesseract.image_to_string(image, lang="rus") + "\n"
+
+    except Exception as e:
+        logging.error(f"Ошибка обработки PDF: {e}")
+
+    return text.strip() if text.strip() else "Текст не распознан."
